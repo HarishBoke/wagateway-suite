@@ -29,9 +29,10 @@ const queryClient = new QueryClient({
 });
 
 function AppContent() {
-  // Initialize from sessionStorage to avoid setState in effect
+  // Initialize from sessionStorage to preserve support for explicit API-key login.
   const savedKey = sessionStorage.getItem('wagateway_api_key');
   const [isAuthenticated, setIsAuthenticated] = useState(!!savedKey);
+  const [isBootstrapping, setIsBootstrapping] = useState(!savedKey);
   const [, setApiKey] = useState(savedKey || '');
   const { setRole, role } = useRole();
 
@@ -57,14 +58,48 @@ function AppContent() {
     setIsAuthenticated(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setApiKey('');
     setIsAuthenticated(false);
     setRole(null);
     sessionStorage.removeItem('wagateway_api_key');
+    await fetch('/api/auth/dashboard-session', { method: 'DELETE' }).catch(() => undefined);
   };
 
-  // Re-validate and get role on mount if already authenticated
+  // First try the production-friendly same-origin dashboard session. If it is disabled,
+  // keep the original manual API-key login flow as a fallback for local/private installs.
+  useEffect(() => {
+    if (savedKey) return;
+
+    let cancelled = false;
+
+    fetch('/api/auth/dashboard-session', { method: 'POST' })
+      .then(async response => {
+        if (!response.ok) {
+          throw new Error('Dashboard session bootstrap is not available');
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (cancelled) return;
+        setRole((data.role || 'admin') as UserRole);
+        setIsAuthenticated(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsAuthenticated(false);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsBootstrapping(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [savedKey, setRole]);
+
+  // Re-validate and get role on mount if already authenticated with an explicit API key.
   useEffect(() => {
     if (!savedKey) return;
 
@@ -88,6 +123,10 @@ function AppContent() {
       <Loader2 className="animate-spin" size={32} />
     </div>
   );
+
+  if (isBootstrapping) {
+    return loadingFallback;
+  }
 
   if (!isAuthenticated) {
     return <Suspense fallback={loadingFallback}><Login onLogin={handleLogin} /></Suspense>;

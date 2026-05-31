@@ -24,6 +24,8 @@ services:
         sync: false
       - key: CORS_ORIGINS
         value: "*"
+      - key: DASHBOARD_AUTO_LOGIN
+        value: true
       - key: DATABASE_TYPE
         value: sqlite
       - key: DATABASE_NAME

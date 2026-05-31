@@ -42,8 +42,12 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   async handleConnection(client: Socket) {
-    // Extract API key from header or query param
-    const apiKey = (client.handshake.headers['x-api-key'] as string) || (client.handshake.query.apiKey as string);
+    // Extract API key from header, query param, auth payload, or dashboard HTTP-only cookie.
+    const apiKey =
+      (client.handshake.headers['x-api-key'] as string) ||
+      (client.handshake.query.apiKey as string) ||
+      (client.handshake.auth?.apiKey as string | undefined) ||
+      this.extractCookie(client.handshake.headers.cookie, 'wagateway_dashboard_key');
 
     if (!apiKey) {
       this.logger.warn(`Client ${client.id} rejected: No API key provided`);
@@ -75,6 +79,16 @@ export class EventsGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   handleDisconnect(client: Socket) {
     this.logger.log(`Client disconnected: ${client.id}`);
+  }
+
+  private extractCookie(cookieHeader: string | undefined, name: string): string | undefined {
+    if (!cookieHeader) return undefined;
+
+    const cookies = cookieHeader.split(';').map(cookie => cookie.trim());
+    const match = cookies.find(cookie => cookie.startsWith(`${name}=`));
+    if (!match) return undefined;
+
+    return decodeURIComponent(match.substring(name.length + 1));
   }
 
   @SubscribeMessage('message')

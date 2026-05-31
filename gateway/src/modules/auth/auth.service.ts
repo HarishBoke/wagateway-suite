@@ -76,6 +76,20 @@ export class AuthService implements OnModuleInit {
     this.logger.log('');
   }
 
+  getPersistedDefaultApiKey(): string | null {
+    if (!existsSync(API_KEY_FILE)) {
+      return null;
+    }
+
+    try {
+      const apiKey = readFileSync(API_KEY_FILE, 'utf-8').trim();
+      return apiKey || null;
+    } catch (error) {
+      this.logger.warn(`Failed to read persisted API key file: ${API_KEY_FILE}`, { error: String(error) });
+      return null;
+    }
+  }
+
   private async seedApiKey(rawKey: string, name: string, role: ApiKeyRole): Promise<ApiKey> {
     const keyHash = this.hashKey(rawKey);
     const keyPrefix = rawKey.substring(0, 12);

@@ -6,12 +6,13 @@ import { ApiKey } from './entities/api-key.entity';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { AuthValidateController } from './auth-validate.controller';
+import { DashboardSessionController } from './dashboard-session.controller';
 import { ApiKeyGuard } from './guards/api-key.guard';
 
 @Global()
 @Module({
   imports: [TypeOrmModule.forFeature([ApiKey], 'main')],
-  controllers: [AuthController, AuthValidateController],
+  controllers: [AuthController, AuthValidateController, DashboardSessionController],
   providers: [
     AuthService,
     {

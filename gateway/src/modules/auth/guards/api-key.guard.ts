@@ -51,7 +51,7 @@ export class ApiKeyGuard implements CanActivate {
   }
 
   private extractApiKey(request: Request): string | undefined {
-    // Support both X-API-Key header and Authorization Bearer
+    // Support X-API-Key, Authorization Bearer, and the dashboard-only HTTP-only cookie.
     const xApiKey = request.headers['x-api-key'] as string;
     if (xApiKey) return xApiKey;
 
@@ -60,7 +60,21 @@ export class ApiKeyGuard implements CanActivate {
       return authHeader.substring(7);
     }
 
+    const cookieHeader = request.headers.cookie;
+    const dashboardCookie = this.extractCookie(cookieHeader, 'wagateway_dashboard_key');
+    if (dashboardCookie) return dashboardCookie;
+
     return undefined;
+  }
+
+  private extractCookie(cookieHeader: string | undefined, name: string): string | undefined {
+    if (!cookieHeader) return undefined;
+
+    const cookies = cookieHeader.split(';').map(cookie => cookie.trim());
+    const match = cookies.find(cookie => cookie.startsWith(`${name}=`));
+    if (!match) return undefined;
+
+    return decodeURIComponent(match.substring(name.length + 1));
   }
 
   private getClientIp(request: Request): string {
