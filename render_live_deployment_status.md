@@ -43,3 +43,13 @@ The permanent Render deployment is now live and responding successfully. Verific
 | `https://wagateway-suite.onrender.com/api/docs` | `200 text/html` |
 
 The Render web service ID is `srv-d8e6am4m0tmc73ej6jhg`, managed by Blueprint `exs-d8e6aa58nd3s73ab1280`, and deployed from GitHub commit `11b849a` on branch `main`.
+
+
+## Dashboard API-Key Prompt Fix Redeploy
+
+A new Render deployment for commit `d5a993e` is building to fix the dashboard API-key prompt. The visible logs show Docker image extraction completed and the build reached the combined dashboard/gateway build command: `npm run dashboard:install && npm run dashboard:build && npm run build`. Until this new deploy is live, the public website may still display the previous manual API-key login screen.
+
+
+## Dashboard Access Fix Verified
+
+The dashboard access fix has been deployed and verified on Render. The permanent site now loads directly at `https://wagateway-suite.onrender.com/` without showing the manual API-key login prompt. Endpoint checks also succeeded: `/api/health` returned HTTP 200, `POST /api/auth/dashboard-session` returned HTTP 201 and set the HTTP-only same-origin dashboard cookie, and the dashboard root returned HTTP 200. A visual browser check confirmed the user lands on the WA Gateway Dashboard with sidebar navigation and no blocking API-key prompt.
