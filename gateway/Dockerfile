@@ -22,8 +22,8 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build the application
-RUN npm run build
+# Build the dashboard and API application
+RUN npm run dashboard:install && npm run dashboard:build && npm run build
 
 # ===== Stage 2: Production =====
 FROM node:22-slim AS production
@@ -66,8 +66,9 @@ COPY package*.json ./
 # Install production dependencies only
 RUN npm ci --omit=dev && npm cache clean --force
 
-# Copy built application from builder stage
+# Copy built application and dashboard from builder stage
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/dashboard/dist ./dashboard/dist
 
 # Create data directories with proper permissions
 RUN mkdir -p ./data/sessions ./data/media && \
@@ -77,12 +78,12 @@ RUN mkdir -p ./data/sessions ./data/media && \
 # For production with stricter security, consider using a Docker socket proxy
 # USER wagateway
 
-# Expose port
+# Expose port (Render also injects PORT at runtime)
 EXPOSE 2785
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:2785/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
+    CMD node -e "const port = process.env.PORT || 2785; require('http').get(`http://localhost:${port}/api/health`, (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
 # Start with dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]

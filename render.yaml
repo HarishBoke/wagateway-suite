@@ -1,0 +1,66 @@
+services:
+  - type: web
+    name: wagateway-suite
+    runtime: docker
+    plan: starter
+    region: singapore
+    rootDir: .
+    dockerfilePath: ./gateway/Dockerfile
+    dockerContext: ./gateway
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      name: wagateway-data
+      mountPath: /app/data
+      sizeGB: 5
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 2785
+      - key: BASE_URL
+        sync: false
+      - key: DASHBOARD_URL
+        sync: false
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: DATABASE_TYPE
+        value: sqlite
+      - key: DATABASE_NAME
+        value: /app/data/wagateway.sqlite
+      - key: DATABASE_SYNCHRONIZE
+        value: true
+      - key: DATABASE_LOGGING
+        value: false
+      - key: POSTGRES_BUILTIN
+        value: false
+      - key: REDIS_ENABLED
+        value: false
+      - key: REDIS_BUILTIN
+        value: false
+      - key: QUEUE_ENABLED
+        value: false
+      - key: CACHE_ENABLED
+        value: false
+      - key: STORAGE_TYPE
+        value: local
+      - key: STORAGE_LOCAL_PATH
+        value: /app/data/media
+      - key: SESSION_DATA_PATH
+        value: /app/data/sessions
+      - key: ENGINE_TYPE
+        value: whatsapp-web.js
+      - key: PUPPETEER_HEADLESS
+        value: true
+      - key: PUPPETEER_ARGS
+        value: --no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/chromium
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: true
+      - key: WEBHOOK_TIMEOUT
+        value: 10000
+      - key: WEBHOOK_MAX_RETRIES
+        value: 3
+      - key: WEBHOOK_RETRY_DELAY
+        value: 5000
