@@ -1,0 +1,578 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WaGateway = void 0;
+const n8n_workflow_1 = require("n8n-workflow");
+function sanitizePathParam(value, paramName) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+        throw new Error(`${paramName} cannot be empty`);
+    }
+    if (trimmed.includes('..') || trimmed.includes('/') || trimmed.includes('\\')) {
+        throw new Error(`${paramName} contains invalid characters`);
+    }
+    return encodeURIComponent(trimmed);
+}
+class WaGateway {
+    constructor() {
+        this.description = {
+            displayName: 'WA Gateway',
+            name: 'waGateway',
+            icon: 'file:wagateway.svg',
+            group: ['transform'],
+            version: 1,
+            subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
+            description: 'Interact with WA Gateway Messaging API Gateway',
+            defaults: {
+                name: 'WA Gateway',
+            },
+            inputs: ['main'],
+            outputs: ['main'],
+            credentials: [
+                {
+                    name: 'waGatewayApi',
+                    required: true,
+                },
+            ],
+            properties: [
+                // Resource
+                {
+                    displayName: 'Resource',
+                    name: 'resource',
+                    type: 'options',
+                    noDataExpression: true,
+                    options: [
+                        { name: 'Contact', value: 'contact' },
+                        { name: 'Message', value: 'message' },
+                        { name: 'Session', value: 'session' },
+                        { name: 'Webhook', value: 'webhook' },
+                    ],
+                    default: 'message',
+                },
+                // ============== SESSION OPERATIONS ==============
+                {
+                    displayName: 'Operation',
+                    name: 'operation',
+                    type: 'options',
+                    noDataExpression: true,
+                    displayOptions: {
+                        show: { resource: ['session'] },
+                    },
+                    options: [
+                        { name: 'Get Status', value: 'getStatus', action: 'Get session status' },
+                        { name: 'List All', value: 'listAll', action: 'List all sessions' },
+                    ],
+                    default: 'getStatus',
+                },
+                {
+                    displayName: 'Session ID',
+                    name: 'sessionId',
+                    type: 'string',
+                    default: 'default',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['session'], operation: ['getStatus'] },
+                    },
+                    description: 'The ID of the session',
+                },
+                // ============== MESSAGE OPERATIONS ==============
+                {
+                    displayName: 'Operation',
+                    name: 'operation',
+                    type: 'options',
+                    noDataExpression: true,
+                    displayOptions: {
+                        show: { resource: ['message'] },
+                    },
+                    options: [
+                        { name: 'Send Document', value: 'sendDocument', action: 'Send a document' },
+                        { name: 'Send Image', value: 'sendImage', action: 'Send an image' },
+                        { name: 'Send Location', value: 'sendLocation', action: 'Send a location' },
+                        { name: 'Send Text', value: 'sendText', action: 'Send a text message' },
+                    ],
+                    default: 'sendText',
+                },
+                {
+                    displayName: 'Session ID',
+                    name: 'sessionId',
+                    type: 'string',
+                    default: 'default',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['message'] },
+                    },
+                    description: 'The ID of the session to send from',
+                },
+                {
+                    displayName: 'Chat ID',
+                    name: 'chatId',
+                    type: 'string',
+                    default: '',
+                    required: true,
+                    placeholder: '628123456789@c.us',
+                    displayOptions: {
+                        show: { resource: ['message'] },
+                    },
+                    description: 'The recipient chat ID (e.g., 628123456789@c.us for personal, or ...@g.us for groups)',
+                },
+                // Send Text fields
+                {
+                    displayName: 'Message',
+                    name: 'message',
+                    type: 'string',
+                    typeOptions: {
+                        rows: 4,
+                    },
+                    default: '',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendText'] },
+                    },
+                    description: 'The text message to send',
+                },
+                // Send Image fields
+                {
+                    displayName: 'Image Source',
+                    name: 'imageSource',
+                    type: 'options',
+                    options: [
+                        { name: 'Binary Data', value: 'binary' },
+                        { name: 'URL', value: 'url' },
+                        { name: 'Base64', value: 'base64' },
+                    ],
+                    default: 'url',
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendImage'] },
+                    },
+                },
+                {
+                    displayName: 'Binary Property',
+                    name: 'imageBinaryProperty',
+                    type: 'string',
+                    default: 'data',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendImage'], imageSource: ['binary'] },
+                    },
+                    description: 'Name of the binary property containing the image',
+                },
+                {
+                    displayName: 'Image URL',
+                    name: 'imageUrl',
+                    type: 'string',
+                    default: '',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendImage'], imageSource: ['url'] },
+                    },
+                    description: 'URL of the image to send',
+                },
+                {
+                    displayName: 'Base64 Data',
+                    name: 'imageBase64',
+                    type: 'string',
+                    default: '',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendImage'], imageSource: ['base64'] },
+                    },
+                    description: 'Base64 encoded image data',
+                },
+                {
+                    displayName: 'Caption',
+                    name: 'caption',
+                    type: 'string',
+                    default: '',
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendImage', 'sendDocument'] },
+                    },
+                    description: 'Optional caption for the media',
+                },
+                // Send Document fields
+                {
+                    displayName: 'Document Source',
+                    name: 'documentSource',
+                    type: 'options',
+                    options: [
+                        { name: 'Binary Data', value: 'binary' },
+                        { name: 'URL', value: 'url' },
+                        { name: 'Base64', value: 'base64' },
+                    ],
+                    default: 'url',
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendDocument'] },
+                    },
+                },
+                {
+                    displayName: 'Binary Property',
+                    name: 'documentBinaryProperty',
+                    type: 'string',
+                    default: 'data',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendDocument'], documentSource: ['binary'] },
+                    },
+                    description: 'Name of the binary property containing the document',
+                },
+                {
+                    displayName: 'Document URL',
+                    name: 'documentUrl',
+                    type: 'string',
+                    default: '',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendDocument'], documentSource: ['url'] },
+                    },
+                    description: 'URL of the document to send',
+                },
+                {
+                    displayName: 'Base64 Data',
+                    name: 'documentBase64',
+                    type: 'string',
+                    default: '',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendDocument'], documentSource: ['base64'] },
+                    },
+                    description: 'Base64 encoded document data',
+                },
+                {
+                    displayName: 'Filename',
+                    name: 'filename',
+                    type: 'string',
+                    default: 'document.pdf',
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendDocument'] },
+                    },
+                    description: 'Filename for the document',
+                },
+                // Send Location fields
+                {
+                    displayName: 'Latitude',
+                    name: 'latitude',
+                    type: 'number',
+                    default: 0,
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendLocation'] },
+                    },
+                    description: 'Latitude coordinate',
+                },
+                {
+                    displayName: 'Longitude',
+                    name: 'longitude',
+                    type: 'number',
+                    default: 0,
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendLocation'] },
+                    },
+                    description: 'Longitude coordinate',
+                },
+                {
+                    displayName: 'Location Name',
+                    name: 'locationName',
+                    type: 'string',
+                    default: '',
+                    displayOptions: {
+                        show: { resource: ['message'], operation: ['sendLocation'] },
+                    },
+                    description: 'Name of the location',
+                },
+                // ============== CONTACT OPERATIONS ==============
+                {
+                    displayName: 'Operation',
+                    name: 'operation',
+                    type: 'options',
+                    noDataExpression: true,
+                    displayOptions: {
+                        show: { resource: ['contact'] },
+                    },
+                    options: [
+                        { name: 'Check Exists', value: 'checkExists', action: 'Check if number exists on WhatsApp' },
+                        { name: 'Get Info', value: 'getInfo', action: 'Get contact information' },
+                    ],
+                    default: 'checkExists',
+                },
+                {
+                    displayName: 'Session ID',
+                    name: 'sessionId',
+                    type: 'string',
+                    default: 'default',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['contact'] },
+                    },
+                    description: 'The ID of the session',
+                },
+                {
+                    displayName: 'Phone Number',
+                    name: 'phoneNumber',
+                    type: 'string',
+                    default: '',
+                    required: true,
+                    placeholder: '628123456789',
+                    displayOptions: {
+                        show: { resource: ['contact'], operation: ['checkExists'] },
+                    },
+                    description: 'Phone number to check (without + or spaces)',
+                },
+                {
+                    displayName: 'Contact ID',
+                    name: 'contactId',
+                    type: 'string',
+                    default: '',
+                    required: true,
+                    placeholder: '628123456789@c.us',
+                    displayOptions: {
+                        show: { resource: ['contact'], operation: ['getInfo'] },
+                    },
+                    description: 'The contact ID to get info for',
+                },
+                // ============== WEBHOOK OPERATIONS ==============
+                {
+                    displayName: 'Operation',
+                    name: 'operation',
+                    type: 'options',
+                    noDataExpression: true,
+                    displayOptions: {
+                        show: { resource: ['webhook'] },
+                    },
+                    options: [
+                        { name: 'Create', value: 'create', action: 'Create a webhook' },
+                        { name: 'Delete', value: 'delete', action: 'Delete a webhook' },
+                    ],
+                    default: 'create',
+                },
+                {
+                    displayName: 'Session ID',
+                    name: 'sessionId',
+                    type: 'string',
+                    default: 'default',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['webhook'] },
+                    },
+                    description: 'The ID of the session',
+                },
+                {
+                    displayName: 'Webhook URL',
+                    name: 'webhookUrl',
+                    type: 'string',
+                    default: '',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['webhook'], operation: ['create'] },
+                    },
+                    description: 'The URL to receive webhook events',
+                },
+                {
+                    displayName: 'Events',
+                    name: 'events',
+                    type: 'multiOptions',
+                    options: [
+                        { name: 'Message Received', value: 'message.received' },
+                        { name: 'Message Sent', value: 'message.sent' },
+                        { name: 'Session Connected', value: 'session.connected' },
+                        { name: 'Session Disconnected', value: 'session.disconnected' },
+                        { name: 'Session QR Ready', value: 'session.qr_ready' },
+                    ],
+                    default: ['message.received'],
+                    displayOptions: {
+                        show: { resource: ['webhook'], operation: ['create'] },
+                    },
+                    description: 'Events to subscribe to',
+                },
+                {
+                    displayName: 'Webhook ID',
+                    name: 'webhookId',
+                    type: 'string',
+                    default: '',
+                    required: true,
+                    displayOptions: {
+                        show: { resource: ['webhook'], operation: ['delete'] },
+                    },
+                    description: 'The ID of the webhook to delete',
+                },
+            ],
+        };
+    }
+    async execute() {
+        const items = this.getInputData();
+        const returnData = [];
+        const resource = this.getNodeParameter('resource', 0);
+        const operation = this.getNodeParameter('operation', 0);
+        const credentials = await this.getCredentials('waGatewayApi');
+        const baseUrl = credentials.serverUrl.replace(/\/$/, '');
+        for (let i = 0; i < items.length; i++) {
+            try {
+                let endpoint = '';
+                let method = 'GET';
+                let body = {};
+                // SESSION
+                if (resource === 'session') {
+                    if (operation === 'getStatus') {
+                        const sessionId = sanitizePathParam(this.getNodeParameter('sessionId', i), 'Session ID');
+                        endpoint = `/api/sessions/${sessionId}`;
+                        method = 'GET';
+                    }
+                    else if (operation === 'listAll') {
+                        endpoint = '/api/sessions';
+                        method = 'GET';
+                    }
+                }
+                // MESSAGE
+                else if (resource === 'message') {
+                    const sessionId = sanitizePathParam(this.getNodeParameter('sessionId', i), 'Session ID');
+                    const chatId = this.getNodeParameter('chatId', i).trim();
+                    if (!chatId) {
+                        throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Chat ID cannot be empty', {
+                            itemIndex: i,
+                        });
+                    }
+                    if (operation === 'sendText') {
+                        endpoint = `/api/sessions/${sessionId}/messages/send-text`;
+                        method = 'POST';
+                        body = {
+                            chatId,
+                            text: this.getNodeParameter('message', i),
+                        };
+                    }
+                    else if (operation === 'sendImage') {
+                        endpoint = `/api/sessions/${sessionId}/messages/send-image`;
+                        method = 'POST';
+                        const imageSource = this.getNodeParameter('imageSource', i);
+                        body = { chatId };
+                        const caption = this.getNodeParameter('caption', i, '').trim();
+                        if (caption) {
+                            body.caption = caption;
+                        }
+                        if (imageSource === 'binary') {
+                            const binaryPropertyName = this.getNodeParameter('imageBinaryProperty', i);
+                            const binaryData = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
+                            body.base64 = binaryData.toString('base64');
+                        }
+                        else if (imageSource === 'url') {
+                            body.url = this.getNodeParameter('imageUrl', i);
+                        }
+                        else {
+                            body.base64 = this.getNodeParameter('imageBase64', i);
+                        }
+                    }
+                    else if (operation === 'sendDocument') {
+                        endpoint = `/api/sessions/${sessionId}/messages/send-document`;
+                        method = 'POST';
+                        const documentSource = this.getNodeParameter('documentSource', i);
+                        body = {
+                            chatId,
+                            filename: this.getNodeParameter('filename', i, 'document.pdf'),
+                        };
+                        const caption = this.getNodeParameter('caption', i, '').trim();
+                        if (caption) {
+                            body.caption = caption;
+                        }
+                        if (documentSource === 'binary') {
+                            const binaryPropertyName = this.getNodeParameter('documentBinaryProperty', i);
+                            const binaryData = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
+                            body.base64 = binaryData.toString('base64');
+                        }
+                        else if (documentSource === 'url') {
+                            body.url = this.getNodeParameter('documentUrl', i);
+                        }
+                        else {
+                            body.base64 = this.getNodeParameter('documentBase64', i);
+                        }
+                    }
+                    else if (operation === 'sendLocation') {
+                        endpoint = `/api/sessions/${sessionId}/messages/send-location`;
+                        method = 'POST';
+                        body = {
+                            chatId,
+                            latitude: this.getNodeParameter('latitude', i),
+                            longitude: this.getNodeParameter('longitude', i),
+                        };
+                        const locationName = this.getNodeParameter('locationName', i, '').trim();
+                        if (locationName) {
+                            body.name = locationName;
+                        }
+                    }
+                }
+                // CONTACT
+                else if (resource === 'contact') {
+                    const sessionId = sanitizePathParam(this.getNodeParameter('sessionId', i), 'Session ID');
+                    if (operation === 'checkExists') {
+                        const phoneNumber = this.getNodeParameter('phoneNumber', i)
+                            .trim()
+                            .replace(/[\s+\-()]/g, '');
+                        if (!phoneNumber || !/^\d+$/.test(phoneNumber)) {
+                            throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Phone number must contain only digits (no +, spaces, or special characters)', { itemIndex: i });
+                        }
+                        endpoint = `/api/sessions/${sessionId}/contacts/check/${encodeURIComponent(phoneNumber)}`;
+                        method = 'GET';
+                    }
+                    else if (operation === 'getInfo') {
+                        const contactId = this.getNodeParameter('contactId', i).trim();
+                        if (!contactId) {
+                            throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'Contact ID cannot be empty', {
+                                itemIndex: i,
+                            });
+                        }
+                        endpoint = `/api/sessions/${sessionId}/contacts/${encodeURIComponent(contactId)}`;
+                        method = 'GET';
+                    }
+                }
+                // WEBHOOK
+                else if (resource === 'webhook') {
+                    const sessionId = sanitizePathParam(this.getNodeParameter('sessionId', i), 'Session ID');
+                    if (operation === 'create') {
+                        endpoint = `/api/sessions/${sessionId}/webhooks`;
+                        method = 'POST';
+                        const events = this.getNodeParameter('events', i);
+                        if (!events || events.length === 0) {
+                            throw new n8n_workflow_1.NodeOperationError(this.getNode(), 'At least one event must be selected', { itemIndex: i });
+                        }
+                        body = {
+                            url: this.getNodeParameter('webhookUrl', i),
+                            events,
+                        };
+                    }
+                    else if (operation === 'delete') {
+                        const webhookId = sanitizePathParam(this.getNodeParameter('webhookId', i), 'Webhook ID');
+                        endpoint = `/api/sessions/${sessionId}/webhooks/${webhookId}`;
+                        method = 'DELETE';
+                    }
+                }
+                // Unhandled resource/operation
+                if (!endpoint) {
+                    throw new n8n_workflow_1.NodeOperationError(this.getNode(), `Unsupported resource/operation: ${resource}/${operation}`, { itemIndex: i });
+                }
+                // Make request
+                const options = {
+                    method,
+                    url: `${baseUrl}${endpoint}`,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    json: true,
+                };
+                if (method !== 'GET' && Object.keys(body).length > 0) {
+                    options.body = body;
+                }
+                const response = await this.helpers.httpRequestWithAuthentication.call(this, 'waGatewayApi', options);
+                returnData.push({ json: response });
+            }
+            catch (error) {
+                if (this.continueOnFail()) {
+                    returnData.push({ json: { error: error.message } });
+                    continue;
+                }
+                if (error instanceof n8n_workflow_1.NodeOperationError) {
+                    throw error;
+                }
+                throw new n8n_workflow_1.NodeApiError(this.getNode(), error);
+            }
+        }
+        return [returnData];
+    }
+}
+exports.WaGateway = WaGateway;
+//# sourceMappingURL=WaGateway.node.js.map

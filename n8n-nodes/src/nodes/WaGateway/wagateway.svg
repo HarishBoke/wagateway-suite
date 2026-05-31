@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="WA Gateway">
+  <rect width="128" height="128" rx="28" fill="#0f172a"/>
+  <path d="M28 85c-5-8-8-17-8-27 0-25 20-45 45-45s45 20 45 45-20 45-45 45c-8 0-16-2-23-6L22 104l6-19z" fill="#14b8a6"/>
+  <text x="64" y="73" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="34" fill="#fff">WA</text>
+</svg>
