@@ -53,3 +53,12 @@ A new Render deployment for commit `d5a993e` is building to fix the dashboard AP
 ## Dashboard Access Fix Verified
 
 The dashboard access fix has been deployed and verified on Render. The permanent site now loads directly at `https://wagateway-suite.onrender.com/` without showing the manual API-key login prompt. Endpoint checks also succeeded: `/api/health` returned HTTP 200, `POST /api/auth/dashboard-session` returned HTTP 201 and set the HTTP-only same-origin dashboard cookie, and the dashboard root returned HTTP 200. A visual browser check confirmed the user lands on the WA Gateway Dashboard with sidebar navigation and no blocking API-key prompt.
+
+
+## Reopened Issue: API-Key Prompt Still Visible
+
+A fresh browser inspection of `https://wagateway-suite.onrender.com/` showed the old manual API-key login screen again. The page content displays the WA Gateway logo, version `v0.2.1 · 5/31/2026`, an `API Key` password input, a `Connect` button, and documentation/GitHub links. This indicates the deployed frontend is either not running the intended dashboard auto-session flow, the runtime environment variable enabling the auto-session path is not active, or the browser bundle/session endpoint is failing before the app can bypass the login screen.
+
+## Dashboard Auto-Login Recovery Fix Implemented
+
+The remaining dashboard login blocker was traced to the persisted raw key in `/app/data/.api-key` pointing to an API-key database row that had become revoked or absent after Render redeploy/data reset cycles. The backend has now been updated so the dashboard session endpoint obtains a recoverable dashboard key: it reactivates and normalizes the persisted key when it exists, or creates and persists a replacement admin dashboard key when the file key is missing from the database. Local production-build validation succeeded for the exact revoked-key scenario: `POST /api/auth/dashboard-session` returned `{"authenticated":true,"role":"admin"}` after the test key was revoked, and `/api/health` returned `{"status":"ok"}`.

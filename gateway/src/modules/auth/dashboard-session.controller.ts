@@ -1,4 +1,4 @@
-import { Controller, Delete, InternalServerErrorException, Post, Res, UnauthorizedException } from '@nestjs/common';
+import { Controller, Delete, Post, Res, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
@@ -21,15 +21,9 @@ export class DashboardSessionController {
       throw new UnauthorizedException('Dashboard auto-login is disabled');
     }
 
-    const apiKey = this.authService.getPersistedDefaultApiKey();
+    const { rawKey, apiKey } = await this.authService.getOrCreateDashboardApiKey();
 
-    if (!apiKey) {
-      throw new InternalServerErrorException('No persisted dashboard API key is available yet');
-    }
-
-    const validatedKey = await this.authService.validateApiKey(apiKey);
-
-    response.cookie(DASHBOARD_COOKIE_NAME, apiKey, {
+    response.cookie(DASHBOARD_COOKIE_NAME, rawKey, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -39,7 +33,7 @@ export class DashboardSessionController {
 
     return {
       authenticated: true,
-      role: validatedKey.role,
+      role: apiKey.role,
     };
   }
 

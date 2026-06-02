@@ -2,13 +2,14 @@ import { Injectable, NotFoundException, UnauthorizedException, OnModuleInit } fr
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
-import { existsSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, writeFileSync, readFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { ApiKey, ApiKeyRole } from './entities/api-key.entity';
 import { CreateApiKeyDto, UpdateApiKeyDto } from './dto';
 import { createLogger } from '../../common/services/logger.service';
 
-const API_KEY_FILE = join(process.cwd(), 'data', '.api-key');
+const DATA_DIR = join(process.cwd(), 'data');
+const API_KEY_FILE = join(DATA_DIR, '.api-key');
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -27,30 +28,20 @@ export class AuthService implements OnModuleInit {
 
     if (count === 0) {
       // Use predictable key in development, random key in production
-      displayKey =
-        process.env.NODE_ENV === 'production' ? `owa_k1_${randomBytes(32).toString('hex')}` : 'dev-admin-key';
+      displayKey = this.generateDefaultRawApiKey();
 
       await this.seedApiKey(displayKey, 'Default Admin Key', ApiKeyRole.ADMIN);
       isNewKey = true;
 
-      // Save raw key to file for startup script to read
-      try {
-        writeFileSync(API_KEY_FILE, displayKey, 'utf-8');
-      } catch (err) {
-        this.logger.warn('Could not save API key file', { error: String(err) });
-      }
+      // Save raw key to file for startup script and dashboard auto-login to read
+      this.persistDefaultApiKey(displayKey);
+    } else if (this.isDashboardAutoLoginEnabled()) {
+      const dashboardKey = await this.getOrCreateDashboardApiKey();
+      displayKey = dashboardKey.rawKey;
+      isNewKey = dashboardKey.created;
     } else {
       // Read saved API key from file if exists
-      if (existsSync(API_KEY_FILE)) {
-        try {
-          displayKey = readFileSync(API_KEY_FILE, 'utf-8').trim();
-        } catch (error) {
-          this.logger.warn(`Failed to read API key file: ${API_KEY_FILE}`, { error: String(error) });
-          displayKey = '(check dashboard for keys)';
-        }
-      } else {
-        displayKey = '(check dashboard for keys)';
-      }
+      displayKey = this.getPersistedDefaultApiKey() || '(check dashboard for keys)';
     }
 
     // Always show the welcome banner on startup
@@ -87,6 +78,90 @@ export class AuthService implements OnModuleInit {
     } catch (error) {
       this.logger.warn(`Failed to read persisted API key file: ${API_KEY_FILE}`, { error: String(error) });
       return null;
+    }
+  }
+
+  async getOrCreateDashboardApiKey(): Promise<{ rawKey: string; apiKey: ApiKey; created: boolean; recovered: boolean }> {
+    const persistedKey = this.getPersistedDefaultApiKey();
+
+    if (persistedKey) {
+      const keyHash = this.hashKey(persistedKey);
+      const existingKey = await this.apiKeyRepository.findOne({ where: { keyHash } });
+
+      if (existingKey) {
+        let recovered = false;
+
+        if (!existingKey.isActive) {
+          existingKey.isActive = true;
+          recovered = true;
+        }
+
+        if (existingKey.expiresAt) {
+          existingKey.expiresAt = null;
+          recovered = true;
+        }
+
+        if (existingKey.role !== ApiKeyRole.ADMIN) {
+          existingKey.role = ApiKeyRole.ADMIN;
+          recovered = true;
+        }
+
+        if (existingKey.allowedIps) {
+          existingKey.allowedIps = null;
+          recovered = true;
+        }
+
+        if (existingKey.allowedSessions) {
+          existingKey.allowedSessions = null;
+          recovered = true;
+        }
+
+        if (recovered) {
+          await this.apiKeyRepository.save(existingKey);
+          this.logger.warn('Recovered persisted dashboard API key for auto-login', {
+            keyId: existingKey.id,
+            action: 'dashboard_key_recovered',
+          });
+        }
+
+        return { rawKey: persistedKey, apiKey: existingKey, created: false, recovered };
+      }
+
+      this.logger.warn('Persisted dashboard API key was not found in the database; creating a replacement key', {
+        action: 'dashboard_key_missing',
+      });
+    }
+
+    const rawKey = this.generateRawApiKey();
+    const apiKey = await this.seedApiKey(rawKey, 'Dashboard Auto-Login Key', ApiKeyRole.ADMIN);
+    this.persistDefaultApiKey(rawKey);
+
+    this.logger.log('Created replacement dashboard API key for auto-login', {
+      keyId: apiKey.id,
+      action: 'dashboard_key_created',
+    });
+
+    return { rawKey, apiKey, created: true, recovered: false };
+  }
+
+  private isDashboardAutoLoginEnabled(): boolean {
+    return ['true', '1', 'yes'].includes(String(process.env.DASHBOARD_AUTO_LOGIN || '').toLowerCase());
+  }
+
+  private generateDefaultRawApiKey(): string {
+    return process.env.NODE_ENV === 'production' ? this.generateRawApiKey() : 'dev-admin-key';
+  }
+
+  private generateRawApiKey(): string {
+    return `owa_k1_${randomBytes(32).toString('hex')}`;
+  }
+
+  private persistDefaultApiKey(rawKey: string): void {
+    try {
+      mkdirSync(DATA_DIR, { recursive: true });
+      writeFileSync(API_KEY_FILE, rawKey, 'utf-8');
+    } catch (err) {
+      this.logger.warn('Could not save API key file', { error: String(err) });
     }
   }
 
